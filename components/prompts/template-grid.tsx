@@ -1,17 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import {
-  ChevronLeft,
-  ChevronRight,
   Download,
   LayoutGrid,
+  Loader2,
   Plus,
   Rows3,
   Search,
   Star,
 } from "lucide-react";
 
+import { templates, type Template } from "@/components/prompts/template-data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -21,101 +22,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { fetchTemplatesPage } from "@/lib/mock-fetch";
+import { useInfiniteScroll } from "@/lib/use-infinite-scroll";
 import { cn } from "@/lib/utils";
 
-export type Template = {
-  id: string;
-  title: string;
-  kind: "image" | "video";
-  tags: string[];
-  model: string;
-  version: string;
-  downloads: number;
-  gradient: string;
-};
-
-export const templates: Template[] = [
-  {
-    id: "apob-3d",
-    title: "生物标志物 3D 可视化",
-    kind: "image",
-    tags: ["ApoB", "3D", "科技感"],
-    model: "Grok (图像)",
-    version: "v2",
-    downloads: 128,
-    gradient: "from-cyan-400/40 via-indigo-500/30 to-fuchsia-500/30",
-  },
-  {
-    id: "aging-compare",
-    title: "衰老对比图生成",
-    kind: "image",
-    tags: ["衰老", "对比", "真实感"],
-    model: "Grok (图像)",
-    version: "v1",
-    downloads: 96,
-    gradient: "from-amber-400/30 via-rose-400/30 to-slate-700/40",
-  },
-  {
-    id: "food-scan",
-    title: "食物扫描增强",
-    kind: "image",
-    tags: ["食物扫描", "AI识别", "健康"],
-    model: "Banana (图像)",
-    version: "v3",
-    downloads: 154,
-    gradient: "from-emerald-400/30 via-lime-400/30 to-teal-600/40",
-  },
-  {
-    id: "ai-agent-video",
-    title: "AI Health Agent 解释视频",
-    kind: "video",
-    tags: ["AI Agent", "健康报告", "科普"],
-    model: "Veo 3.1",
-    version: "v2",
-    downloads: 212,
-    gradient: "from-sky-400/40 via-cyan-400/40 to-indigo-600/50",
-  },
-  {
-    id: "running-data",
-    title: "运动数据可视化动画",
-    kind: "video",
-    tags: ["运动健康", "数据可视化", "UI动画"],
-    model: "Veo 3.1",
-    version: "v1",
-    downloads: 186,
-    gradient: "from-emerald-400/40 via-teal-500/30 to-slate-700/40",
-  },
-  {
-    id: "mito",
-    title: "线粒体功能提升动画",
-    kind: "video",
-    tags: ["线粒体", "细胞健康", "科学"],
-    model: "Seedance 2.0",
-    version: "v2",
-    downloads: 143,
-    gradient: "from-violet-500/40 via-fuchsia-500/30 to-cyan-500/40",
-  },
-  {
-    id: "brand-poster",
-    title: "品牌科技感海报",
-    kind: "image",
-    tags: ["品牌", "科技感", "海报"],
-    model: "Grok (图像)",
-    version: "v2",
-    downloads: 87,
-    gradient: "from-blue-500/40 via-indigo-600/40 to-slate-900/60",
-  },
-  {
-    id: "report-ui",
-    title: "个性化报告界面",
-    kind: "image",
-    tags: ["报告", "UI设计", "可视化"],
-    model: "Banana (图像)",
-    version: "v1",
-    downloads: 73,
-    gradient: "from-slate-700/60 via-cyan-500/30 to-emerald-500/20",
-  },
-];
+export { templates };
+export type { Template };
 
 const tabs = ["全部模板", "图片模板", "视频模板", "我的模板", "收藏"] as const;
 type Tab = (typeof tabs)[number];
@@ -174,7 +86,6 @@ export function TemplateLibrary({
 }) {
   const [tab, setTab] = useState<Tab>("全部模板");
   const [view, setView] = useState<"grid" | "list">("grid");
-  const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState("");
   const [category, setCategory] = useState<string>(ALL);
   const [scene, setScene] = useState<string>(ALL);
@@ -182,35 +93,41 @@ export function TemplateLibrary({
   const [model, setModel] = useState<string>(ALL);
   const [sort, setSort] = useState<string>("latest");
 
-  const visible = templates
-    .filter((tpl) => {
-      if (tab === "图片模板" && tpl.kind !== "image") return false;
-      if (tab === "视频模板" && tpl.kind !== "video") return false;
-      if (tab === "收藏" && !starred.has(tpl.id)) return false;
-      if (
-        category !== ALL &&
-        !tpl.tags.some((t) =>
-          t.toLowerCase().includes(category.toLowerCase())
-        )
-      )
-        return false;
-      if (model !== ALL && tpl.model !== model) return false;
-      if (
-        keyword &&
-        !tpl.title.toLowerCase().includes(keyword.toLowerCase()) &&
-        !tpl.tags.some((t) => t.toLowerCase().includes(keyword.toLowerCase()))
-      )
-        return false;
-      // scene / style are visual-only filters in this static demo
-      void scene;
-      void style;
-      return true;
-    })
-    .sort((a, b) => {
-      if (sort === "downloads") return b.downloads - a.downloads;
-      if (sort === "title") return a.title.localeCompare(b.title, "zh");
-      return 0;
-    });
+  // scene / style are decorative filters in this demo
+  void scene;
+  void style;
+
+  const starredKey = useMemo(
+    () => [...starred].sort().join(","),
+    [starred]
+  );
+
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+  } = useInfiniteQuery({
+    queryKey: ["templates", tab, category, model, keyword, sort, starredKey],
+    queryFn: ({ pageParam }) =>
+      fetchTemplatesPage(pageParam as number, {
+        tab,
+        category,
+        model,
+        keyword,
+        sort,
+        starredIds: [...starred],
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (last) => last.nextCursor,
+  });
+
+  const items = data?.pages.flatMap((p) => p.items) ?? [];
+
+  const sentinelRef = useInfiniteScroll<HTMLDivElement>(() => {
+    if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+  }, !isLoading && view === "grid");
 
   return (
     <section>
@@ -259,12 +176,17 @@ export function TemplateLibrary({
         onSortChange={setSort}
       />
 
-      {visible.length > 0 ? (
+      {isLoading ? (
+        <div className="mt-5 flex items-center justify-center py-16 text-sm text-muted-foreground">
+          <Loader2 className="mr-2 size-4 animate-spin" />
+          加载中…
+        </div>
+      ) : items.length > 0 ? (
         view === "grid" ? (
-          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {visible.map((tpl) => (
+          <div className="mt-5 columns-1 gap-4 sm:columns-2 lg:columns-3 xl:columns-4">
+            {items.map((tpl) => (
               <TemplateCard
-                key={tpl.id}
+                key={tpl.uid}
                 template={tpl}
                 selected={tpl.id === selectedId}
                 starred={starred.has(tpl.id)}
@@ -275,9 +197,9 @@ export function TemplateLibrary({
           </div>
         ) : (
           <ul className="mt-5 divide-y divide-border/60 rounded-2xl border border-border/60 bg-card/30">
-            {visible.map((tpl) => (
+            {items.map((tpl) => (
               <TemplateListItem
-                key={tpl.id}
+                key={tpl.uid}
                 template={tpl}
                 selected={tpl.id === selectedId}
                 starred={starred.has(tpl.id)}
@@ -293,7 +215,18 @@ export function TemplateLibrary({
         </div>
       )}
 
-      <Pagination page={page} onChange={setPage} />
+      <div ref={sentinelRef} className="h-10" />
+
+      <div className="mt-2 flex items-center justify-center pb-4 text-xs text-muted-foreground">
+        {isFetchingNextPage ? (
+          <span className="flex items-center gap-1.5">
+            <Loader2 className="size-3.5 animate-spin" />
+            加载更多…
+          </span>
+        ) : !hasNextPage && items.length > 0 ? (
+          <span>已加载全部</span>
+        ) : null}
+      </div>
     </section>
   );
 }
@@ -450,7 +383,7 @@ function TemplateCard({
   onSelect,
   onToggleStar,
 }: {
-  template: Template;
+  template: Template & { uid: string; aspectRatio: number };
   selected: boolean;
   starred: boolean;
   onSelect: () => void;
@@ -460,17 +393,15 @@ function TemplateCard({
     <article
       onClick={onSelect}
       className={cn(
-        "group cursor-pointer overflow-hidden rounded-2xl border bg-card/40 transition-colors",
+        "group mb-4 cursor-pointer break-inside-avoid overflow-hidden rounded-2xl border bg-card/40 transition-colors",
         selected
           ? "border-primary/70 shadow-lg shadow-primary/10"
           : "border-border/60 hover:border-primary/30"
       )}
     >
       <div
-        className={cn(
-          "relative aspect-[4/3] bg-gradient-to-br",
-          template.gradient
-        )}
+        style={{ aspectRatio: template.aspectRatio }}
+        className={cn("relative bg-gradient-to-br", template.gradient)}
       >
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_oklch(1_0_0_/_0.08),_transparent_60%)]" />
         <span className="absolute top-3 left-3 rounded-md bg-black/50 px-1.5 py-0.5 text-[10px] font-medium text-white/90 backdrop-blur-sm">
@@ -539,9 +470,7 @@ function TemplateListItem({
       onClick={onSelect}
       className={cn(
         "flex cursor-pointer items-center gap-4 p-3 transition-colors first:rounded-t-2xl last:rounded-b-2xl",
-        selected
-          ? "bg-primary/10"
-          : "hover:bg-card/60"
+        selected ? "bg-primary/10" : "hover:bg-card/60"
       )}
     >
       <div
@@ -560,10 +489,7 @@ function TemplateListItem({
         </div>
         <div className="mt-1 flex flex-wrap gap-1.5">
           {template.tags.map((tag) => (
-            <span
-              key={tag}
-              className="text-[11px] text-primary/80"
-            >
+            <span key={tag} className="text-[11px] text-primary/80">
               #{tag}
             </span>
           ))}
@@ -585,62 +511,14 @@ function TemplateListItem({
           }}
           className={cn(
             "flex size-7 items-center justify-center rounded-md hover:bg-muted",
-            starred ? "text-primary" : "text-muted-foreground hover:text-foreground"
+            starred
+              ? "text-primary"
+              : "text-muted-foreground hover:text-foreground"
           )}
         >
           <Star className={cn("size-3.5", starred && "fill-current")} />
         </button>
       </div>
     </li>
-  );
-}
-
-function Pagination({
-  page,
-  onChange,
-}: {
-  page: number;
-  onChange: (n: number) => void;
-}) {
-  const pages = [1, 2, 3, 4, 5, "...", 12] as const;
-  return (
-    <div className="mt-8 flex items-center justify-center gap-1.5 text-sm">
-      <button
-        type="button"
-        onClick={() => onChange(Math.max(1, page - 1))}
-        disabled={page <= 1}
-        className="flex size-8 items-center justify-center rounded-md border border-border/60 text-muted-foreground hover:text-foreground disabled:opacity-40"
-      >
-        <ChevronLeft className="size-4" />
-      </button>
-      {pages.map((p, i) => {
-        const isNum = typeof p === "number";
-        return (
-          <button
-            key={`${p}-${i}`}
-            type="button"
-            disabled={!isNum}
-            onClick={() => isNum && onChange(p)}
-            className={cn(
-              "flex size-8 items-center justify-center rounded-md border text-xs",
-              isNum && page === p
-                ? "border-primary/40 bg-primary/15 text-primary"
-                : "border-border/60 text-muted-foreground hover:text-foreground",
-              !isNum && "cursor-default"
-            )}
-          >
-            {p}
-          </button>
-        );
-      })}
-      <button
-        type="button"
-        onClick={() => onChange(Math.min(12, page + 1))}
-        disabled={page >= 12}
-        className="flex size-8 items-center justify-center rounded-md border border-border/60 text-muted-foreground hover:text-foreground disabled:opacity-40"
-      >
-        <ChevronRight className="size-4" />
-      </button>
-    </div>
   );
 }
