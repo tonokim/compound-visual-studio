@@ -5,22 +5,24 @@ export default function LoginPage() {
     <main className="relative flex min-h-screen w-full overflow-hidden bg-background">
       <BackgroundDecor />
 
-      <section className="relative z-10 hidden flex-1 items-center justify-center px-12 lg:flex">
-        <div className="flex flex-col items-center text-center">
-          <BrandMark />
-          <h1 className="mt-6 text-5xl font-semibold tracking-tight text-foreground">
-            Compound
-          </h1>
-          <p className="mt-2 text-2xl font-light text-foreground/80">
-            Visual Studio
-          </p>
-          <div className="mt-6 h-px w-12 bg-primary/60" />
-        </div>
-      </section>
+      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-stretch">
+        <section className="hidden flex-1 items-center justify-center px-12 lg:flex">
+          <div className="flex flex-col items-center text-center">
+            <BrandMark />
+            <h1 className="mt-6 text-5xl font-semibold tracking-tight text-foreground">
+              Compound
+            </h1>
+            <p className="mt-2 text-2xl font-light text-foreground/80">
+              Visual Studio
+            </p>
+            <div className="mt-6 h-px w-12 bg-primary/60" />
+          </div>
+        </section>
 
-      <section className="relative z-10 flex w-full items-center justify-center px-6 py-12 lg:w-[640px] lg:px-12">
-        <LoginForm />
-      </section>
+        <section className="flex w-full flex-1 items-center justify-center px-6 py-12 lg:px-12">
+          <LoginForm />
+        </section>
+      </div>
     </main>
   );
 }
