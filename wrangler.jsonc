@@ -16,7 +16,7 @@
       // Self-reference service binding. The service name must match the worker name.
       // See https://opennext.js.org/cloudflare/caching
       "binding": "WORKER_SELF_REFERENCE",
-      "service": "compound-visual-studio"
+      "service": "visual-studio"
     }
   ],
   "images": {
